@@ -23,15 +23,16 @@ def get_game_driver() -> WebDriver:
 
 
 class Bot:
-    def __init__(self, driver: WebDriver, report_timeout: int = 5):
+    def __init__(self, driver: WebDriver, report_timeout: int = 1):
 
         self.drvr = driver
         self.actions = ActionChains(self.drvr, duration=500)
         self.counter_to_buy_upgrade = 1000
         self.counter_to_buy_building = 100
-        self.cookies_count = 0
+        self.cookies_count = 0.0
         self.report_timeout = datetime.timedelta(minutes=report_timeout)
         self.start_time_to_report = datetime.datetime.now()
+        self.units = ""
 
         change_lang = driver.find_element(By.ID, "changeLanguage")
         change_lang.click()
@@ -64,19 +65,13 @@ class Bot:
     def check_time_to_report(self):
         time_now = datetime.datetime.now()
         if time_now > self.start_time_to_report + self.report_timeout:
-            speed = WebDriverWait(
-                self.drvr,
-                40,
-                ignored_exceptions=(StaleElementReferenceException,),
-            ).until(self.get_speed)
+            speed = self.get_speed()
             print(
-                f"Cookies count: {self.cookies_count}\n" f"speed: {speed}\n\n"
+                f"Cookies count: {self.cookies_count}\n"
+                f"speed: {speed}\n"
+                f"units: {self.units}\n"
             )
             self.start_time_to_report = time_now
-
-            # decrease counter to buy buildings more often
-            if self.is_mln_bln(speed):
-                self.counter_to_buy_building //= 10
 
     def buy_building(self, building: WebElement):
         self.actions.move_to_element(building).click().perform()
@@ -118,13 +113,14 @@ class Bot:
             return upgrades[-1]
 
     def check_cookies_count(self):
-        cookies = (
-            self.drvr.find_element(By.ID, "cookies")
-            .text.split()[0]
-            .replace(",", "_")
-        )
-        cookies = cookies.replace(".", "_")
-        self.cookies_count = int(cookies)
+        cookies, self.units = self.drvr.find_element(
+            By.ID, "cookies"
+        ).text.split()[:2]
+        cookies = cookies.replace(",", "_")
+
+        units_multiplier = self.get_units_multiplier()
+        self.cookies_count = float(cookies) * units_multiplier
+
         active_building = self.get_active_building()
         active_upgrade = self.get_active_upgrade()
         if (
@@ -137,10 +133,18 @@ class Bot:
         ):
             self.buy_upgrade(active_upgrade)
 
-    def get_speed(self, driver: WebDriver) -> str | bool:
+    def get_speed(self) -> str:
+        speed = WebDriverWait(
+            self.drvr,
+            40,
+            ignored_exceptions=(StaleElementReferenceException,),
+        ).until(self._find_speed_element)
+        return speed
+
+    def _find_speed_element(self, driver: WebDriver) -> str | bool:
         speed = driver.find_elements(By.ID, "cookiesPerSecond")
         if speed:
-            return speed[0].text
+            return speed[-1].text
         else:
             return False
 
@@ -158,9 +162,13 @@ class Bot:
         else:
             return False
 
-    def is_mln_bln(self, speed: str) -> bool:
-        unit = speed.split()[-1]
-        return unit == "million" or unit == "billion"
+    def get_units_multiplier(self) -> int:
+        if "million" in self.units:
+            return 10**6
+        elif "billion" in self.units:
+            return 10**9
+        else:
+            return 1
 
 
 if __name__ == "__main__":
