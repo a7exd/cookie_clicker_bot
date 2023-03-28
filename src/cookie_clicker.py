@@ -12,6 +12,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebElement
+from logging import Logger, FileHandler, StreamHandler, Formatter
 
 
 def get_game_driver() -> WebDriver:
@@ -23,9 +24,12 @@ def get_game_driver() -> WebDriver:
 
 
 class Bot:
-    def __init__(self, driver: WebDriver, report_timeout: int = 1):
+    def __init__(
+        self, driver: WebDriver, logger: Logger, report_timeout: int = 1
+    ):
 
         self.drvr = driver
+        self.log = logger
         self.actions = ActionChains(self.drvr, duration=500)
         self.counter_to_buy_upgrade = 1000
         self.counter_to_buy_building = 100
@@ -66,10 +70,8 @@ class Bot:
         time_now = datetime.datetime.now()
         if time_now > self.start_time_to_report + self.report_timeout:
             speed = self.get_speed()
-            print(
-                f"Cookies count: {self.cookies_count}\n"
-                f"speed: {speed}\n"
-                f"units: {self.units}\n"
+            self.log.info(
+                f"Cookies count: {self.cookies_count}, " f"speed: {speed}\n"
             )
             self.start_time_to_report = time_now
 
@@ -172,5 +174,19 @@ class Bot:
 
 
 if __name__ == "__main__":
-    bot = Bot(driver=get_game_driver())
+    log = Logger(__name__, level="INFO")
+    file_handler = FileHandler(
+        "cookie_clicker_bot.log", mode="w", encoding="utf-8"
+    )
+
+    formatter = Formatter("[%(asctime)s: %(levelname)s] - %(message)s")
+    file_handler.setFormatter(formatter)
+
+    stream_handler = StreamHandler()
+    stream_handler.setFormatter(formatter)
+
+    log.addHandler(file_handler)
+    log.addHandler(stream_handler)
+
+    bot = Bot(driver=get_game_driver(), logger=log)
     bot.run()
