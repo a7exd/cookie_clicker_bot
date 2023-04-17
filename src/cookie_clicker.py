@@ -16,7 +16,16 @@ from logging import Logger, FileHandler, StreamHandler, Formatter
 
 
 def get_game_driver() -> WebDriver:
-    drvr = webdriver.Chrome()
+    options = webdriver.ChromeOptions()
+    options.add_argument("--ignore-ssl-errors=yes")
+    options.add_argument("--ignore-certificate-errors")
+
+    time.sleep(50)  # ChromeDriver can't start immediately
+
+    drvr = webdriver.Remote(
+        command_executor="http://selenium-grid:4444", options=options
+    )
+
     drvr.set_window_size("1400", "900")
     drvr.get("https://orteil.dashnet.org/cookieclicker/")
     time.sleep(4)
@@ -176,7 +185,7 @@ class Bot:
 if __name__ == "__main__":
     log = Logger(__name__, level="INFO")
     file_handler = FileHandler(
-        "cookie_clicker_bot.log", mode="w", encoding="utf-8"
+        "./logs/cookie_clicker_bot.log", mode="w", encoding="utf-8"
     )
 
     formatter = Formatter("[%(asctime)s: %(levelname)s] - %(message)s")
