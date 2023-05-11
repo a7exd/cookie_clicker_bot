@@ -1,4 +1,5 @@
 import datetime
+import os
 import time
 
 from selenium import webdriver
@@ -13,28 +14,46 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebElement
 from logging import Logger, FileHandler, StreamHandler, Formatter
+import urllib3.exceptions
+
+GAME_TIME = int(os.getenv("GAME_TIME", 10))
+
+log = Logger(__name__, level="DEBUG")
+file_handler = FileHandler(
+    "./logs/cookie_clicker_bot.log", mode="w", encoding="utf-8"
+)
+
+formatter = Formatter("[%(asctime)s: %(levelname)s] - %(message)s")
+file_handler.setFormatter(formatter)
+
+stream_handler = StreamHandler()
+stream_handler.setFormatter(formatter)
+
+log.addHandler(file_handler)
+log.addHandler(stream_handler)
 
 
-def get_game_driver() -> WebDriver:
+def get_game_driver() -> WebDriver | None:
     options = webdriver.ChromeOptions()
-    options.add_argument("--ignore-ssl-errors=yes")
-    options.add_argument("--ignore-certificate-errors")
 
     time.sleep(50)  # ChromeDriver can't start immediately
-
-    drvr = webdriver.Remote(
-        command_executor="http://selenium-grid:4444", options=options
-    )
+    try:
+        drvr = webdriver.Remote(
+            command_executor="http://selenium-grid:4444", options=options
+        )
+    except urllib3.exceptions.MaxRetryError as exc:
+        log.error(exc)
+        return None
 
     drvr.set_window_size("1400", "900")
     drvr.get("https://orteil.dashnet.org/cookieclicker/")
-    time.sleep(4)
+    time.sleep(10)
     return drvr
 
 
 class Bot:
     def __init__(
-        self, driver: WebDriver, logger: Logger, report_timeout: int = 1
+        self, driver: WebDriver, logger: Logger = log, report_timeout: int = 1
     ):
 
         self.drvr = driver
@@ -44,13 +63,17 @@ class Bot:
         self.counter_to_buy_building = 100
         self.cookies_count = 0.0
         self.report_timeout = datetime.timedelta(minutes=report_timeout)
-        self.start_time_to_report = datetime.datetime.now()
+        self.start_time = datetime.datetime.now()
         self.units = ""
+        self.endgame_time = self.start_time + datetime.timedelta(
+            minutes=GAME_TIME
+        )
 
         change_lang = driver.find_element(By.ID, "changeLanguage")
         change_lang.click()
         change_lang_close = driver.find_element(By.ID, "promptClose")
         change_lang_close.click()
+        self.log.info("The game has been started.")
 
     def run(self):
 
@@ -59,13 +82,15 @@ class Bot:
 
             self.check_flying_cookie()
             self.check_cookies_count()
-            self.check_time_to_report()
+            if not self.check_time():
+                break
+        self.drvr.quit()
 
     def click_cookie(self):
         try:
             self.get_cookie_click()
-        except ElementClickInterceptedException:
-            print("Error was excepted!")
+        except ElementClickInterceptedException as exc:
+            self.log.error(exc)
             WebDriverWait(
                 self.drvr,
                 20,
@@ -75,14 +100,23 @@ class Bot:
                 ),
             ).until(self.get_cookie_click)
 
-    def check_time_to_report(self):
+    def check_time(self) -> bool:
         time_now = datetime.datetime.now()
-        if time_now > self.start_time_to_report + self.report_timeout:
+        if time_now > self.start_time + self.report_timeout:
             speed = self.get_speed()
             self.log.info(
                 f"Cookies count: {self.cookies_count}, " f"speed: {speed}\n"
             )
-            self.start_time_to_report = time_now
+            if self.is_endgame(time_now):
+                return False
+            self.start_time = time_now
+        return True
+
+    def is_endgame(self, time_now) -> bool:
+        if time_now >= self.endgame_time:
+            self.log.info("Time's up! The game has been finished.\n")
+            return True
+        return False
 
     def buy_building(self, building: WebElement):
         self.actions.move_to_element(building).click().perform()
@@ -182,20 +216,17 @@ class Bot:
             return 1
 
 
+def main():
+    game_driver = get_game_driver()
+    if game_driver:
+        bot = Bot(driver=game_driver)
+        bot.run()
+    else:
+        log.info(
+            "Can't connect to the remote webdriver!"
+            " Make sure that the selenium-grid service is available."
+        )
+
+
 if __name__ == "__main__":
-    log = Logger(__name__, level="INFO")
-    file_handler = FileHandler(
-        "./logs/cookie_clicker_bot.log", mode="w", encoding="utf-8"
-    )
-
-    formatter = Formatter("[%(asctime)s: %(levelname)s] - %(message)s")
-    file_handler.setFormatter(formatter)
-
-    stream_handler = StreamHandler()
-    stream_handler.setFormatter(formatter)
-
-    log.addHandler(file_handler)
-    log.addHandler(stream_handler)
-
-    bot = Bot(driver=get_game_driver(), logger=log)
-    bot.run()
+    main()
