@@ -27,7 +27,8 @@ FROM python:3.10-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/app/.venv/bin:$PATH"
+    PATH="/opt/app/.venv/bin:$PATH" \
+    GAME_TIME=3
 
 RUN groupadd --system services && useradd --system -g services cookie_clicker_app
 
@@ -37,6 +38,5 @@ WORKDIR /opt/app
 COPY --from=builder /opt/app/.venv ./.venv
 
 COPY src ./src
-COPY --chown=cookie_clicker_app:cookie_clicker_app logs ./logs
 
 USER cookie_clicker_app
