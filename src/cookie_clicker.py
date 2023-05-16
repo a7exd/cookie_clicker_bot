@@ -225,7 +225,7 @@ def main():
         log.info(
             "Can't connect to the remote webdriver!"
             " Make sure that the selenium-grid service is available"
-            " and try to start bot service again."
+            " and try to start the bot service again."
         )
 
 
